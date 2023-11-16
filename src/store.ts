@@ -142,12 +142,14 @@ function createOptionsStore<
   pinia: Pinia,
   hot?: boolean
 ): Store<Id, S, G, A> {
+  //# 结构定义 store 时提供的三个要素
   const { state, actions, getters } = options
 
   const initialState: StateTree | undefined = pinia.state.value[id]
 
   let store: Store<Id, S, G, A>
 
+  //# 将 options 包装成 setup 函数, 最后调用 createSetupStore 方法处理
   function setup() {
     if (!initialState && (!__DEV__ || !hot)) {
       /* istanbul ignore if */
@@ -168,13 +170,16 @@ function createOptionsStore<
     return assign(
       localState,
       actions,
+      //# 遍历所有的 getters
       Object.keys(getters || {}).reduce((computedGetters, name) => {
+        //# 如果 getter 和 state 重名则报警告
         if (__DEV__ && name in localState) {
           console.warn(
             `[🍍]: A getter cannot have the same name as another state property. Rename one of them. Found with "${name}" in store "${id}".`
           )
         }
 
+        //# 通过 computed 方法实现 getters
         computedGetters[name] = markRaw(
           computed(() => {
             setActivePinia(pinia)
@@ -196,8 +201,10 @@ function createOptionsStore<
     )
   }
 
+  //# 获取处理好的 store
   store = createSetupStore(id, setup, options, pinia, hot, true)
 
+  //# 返回 store
   return store as any
 }
 
@@ -208,14 +215,14 @@ function createSetupStore<
   G extends Record<string, _Method>,
   A extends _ActionsTree
 >(
-  $id: Id,
-  setup: () => SS,
-  options:
+  $id: Id, //# 当前 store 的 id
+  setup: () => SS, //# defineStore 或者 createOptionsStore 传入的 setup 函数
+  options: //# 配置选项，state、getter、actions 等
     | DefineSetupStoreOptions<Id, S, G, A>
     | DefineStoreOptions<Id, S, G, A> = {},
-  pinia: Pinia,
-  hot?: boolean,
-  isOptionsStore?: boolean
+  pinia: Pinia, //# Pinia 实例
+  hot?: boolean, //# 热更新相关
+  isOptionsStore?: boolean //# 是否是 选项式 Store 创建
 ): Store<Id, S, G, A> {
   let scope!: EffectScope
 
@@ -388,6 +395,7 @@ function createSetupStore<
         throw error
       }
 
+      //# 如果返回值是一个 promise 类型, 则返回异步回调后的处理
       if (ret instanceof Promise) {
         return ret
           .then((value) => {
@@ -402,6 +410,8 @@ function createSetupStore<
 
       // trigger after callbacks
       triggerSubscriptions(afterCallbackList, ret)
+
+      //# 返回结果
       return ret
     }
   }
@@ -803,12 +813,14 @@ export type StoreState<SS> = SS extends Store<
 //   action: () => void
 // }>
 
+//# defineStore接受三种类型参数
 /**
  * Creates a `useStore` function that retrieves the store instance
  *
  * @param id - id of the store (must be unique)
  * @param options - options to define the store
  */
+//# id + options
 export function defineStore<
   Id extends string,
   S extends StateTree = {},
@@ -825,6 +837,7 @@ export function defineStore<
  *
  * @param options - options to define the store
  */
+//# optionsHasId
 export function defineStore<
   Id extends string,
   S extends StateTree = {},
@@ -840,6 +853,7 @@ export function defineStore<
  * @param storeSetup - function that defines the store
  * @param options - extra options
  */
+//# id + setup
 export function defineStore<Id extends string, SS>(
   id: Id,
   storeSetup: () => SS,
@@ -855,6 +869,8 @@ export function defineStore<Id extends string, SS>(
   _ExtractGettersFromSetupStore<SS>,
   _ExtractActionsFromSetupStore<SS>
 >
+
+//# defineStore 最终返回的是一个函数
 export function defineStore(
   // TODO: add proper types from above
   idOrOptions: any,
@@ -877,6 +893,7 @@ export function defineStore(
       >
 
   const isSetupStore = typeof setup === 'function'
+  //# 对所接受参数的一些统一化处理
   if (typeof idOrOptions === 'string') {
     id = idOrOptions
     // the option store setup will contain the actual options in this case
@@ -892,6 +909,7 @@ export function defineStore(
     }
   }
 
+  //# 声明一个 useStore 函数, 函数调用后最后返回 store
   function useStore(pinia?: Pinia | null, hot?: StoreGeneric): StoreGeneric {
     const hasContext = hasInjectionContext()
     pinia =
@@ -909,13 +927,17 @@ export function defineStore(
       )
     }
 
+    //# 设置 pinia 为激活的 pinia
     pinia = activePinia!
 
+    //# 如果没有 id, 则表示当前这个 store 是第一次使用, 需要根据参数创建 store
     if (!pinia._s.has(id)) {
       // creating the store registers it in `pinia._s`
+      //# 如果传递的是 setup 函数
       if (isSetupStore) {
         createSetupStore(id, setup, options, pinia)
       } else {
+        //# 传递的是选项式 api
         createOptionsStore(id, options as any, pinia)
       }
 
@@ -926,6 +948,7 @@ export function defineStore(
       }
     }
 
+    //# 这个时候一定存在该 id 被创建过 store
     const store: StoreGeneric = pinia._s.get(id)!
 
     if (__DEV__ && hot) {
@@ -957,6 +980,7 @@ export function defineStore(
     }
 
     // StoreGeneric cannot be casted towards Store
+    //# 返回这个 store
     return store as any
   }
 
