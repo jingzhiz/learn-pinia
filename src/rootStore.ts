@@ -42,7 +42,9 @@ interface _SetActivePinia {
 /**
  * Get the currently active pinia if there is any.
  */
+//# 获取 pinia
 export const getActivePinia = () =>
+  //# 如果是组件中使用则通过 inject 注入的方式提供 pinia, 否则用全局的这个 activePinia
   (hasInjectionContext() && inject(piniaSymbol)) || activePinia
 
 /**

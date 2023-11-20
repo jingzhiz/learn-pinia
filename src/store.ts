@@ -56,6 +56,7 @@ const fallbackRunWithContext = (fn: () => unknown) => fn()
 
 type _ArrayType<AT> = AT extends Array<infer T> ? T : never
 
+//# 深度遍历每一个熟悉来进行同级数据的合并
 function mergeReactiveObjects<
   T extends Record<any, unknown> | Map<unknown, unknown> | Set<unknown>
 >(target: T, patchToApply: _DeepPartial<T>): T {
@@ -70,7 +71,9 @@ function mergeReactiveObjects<
 
   // no need to go through symbols because they cannot be serialized anyway
   for (const key in patchToApply) {
+    //# 跳过原型链上的属性
     if (!patchToApply.hasOwnProperty(key)) continue
+
     const subPatch = patchToApply[key]
     const targetValue = target[key]
     if (
@@ -83,8 +86,10 @@ function mergeReactiveObjects<
       // NOTE: here I wanted to warn about inconsistent types but it's not possible because in setup stores one might
       // start the value of a property as a certain type e.g. a Map, and then for some reason, during SSR, change that
       // to `undefined`. When trying to hydrate, we want to override the Map with `undefined`.
+      //# 如果相比较的两个值都是对象，那么就递归合并
       target[key] = mergeReactiveObjects(targetValue, subPatch)
     } else {
+      //# 只要有一方不是对象则直接整个替换
       // @ts-expect-error: subPatch is a valid value
       target[key] = subPatch
     }
@@ -126,9 +131,10 @@ function shouldHydrate(obj: any) {
 
 const { assign } = Object
 
+//# 判断是否是计算属性
 function isComputed<T>(value: ComputedRef<T> | unknown): value is ComputedRef<T>
 function isComputed(o: any): o is ComputedRef {
-  return !!(isRef(o) && (o as any).effect)
+  return !!(isRef(o) && (o as any).effect) //# 如果是 ref 并且存在 effect 属性也是计算属性
 }
 
 function createOptionsStore<
@@ -237,6 +243,7 @@ function createSetupStore<
   }
 
   // watcher options for $subscribe
+  //# $subscribe配置的属性, 也就是传递给 watch api 的 options
   const $subscribeOptions: WatchOptions = {
     deep: true,
     // flush: 'post',
@@ -265,8 +272,8 @@ function createSetupStore<
   // internal state
   let isListening: boolean // set to true at the end
   let isSyncListening: boolean // set to true at the end
-  let subscriptions: SubscriptionCallback<S>[] = []
-  let actionSubscriptions: StoreOnActionListener<Id, S, G, A>[] = []
+  let subscriptions: SubscriptionCallback<S>[] = [] //# 订阅监听 state 改变时执行的回调的数组
+  let actionSubscriptions: StoreOnActionListener<Id, S, G, A>[] = [] //# 订阅监听 action 回调的数组
   let debuggerEvents: DebuggerEvent[] | DebuggerEvent
   const initialState = pinia.state.value[$id] as UnwrapRef<S> | undefined
 
@@ -300,6 +307,7 @@ function createSetupStore<
     if (__DEV__) {
       debuggerEvents = []
     }
+    //# patch 的是一个函数
     if (typeof partialStateOrMutator === 'function') {
       partialStateOrMutator(pinia.state.value[$id] as UnwrapRef<S>)
       subscriptionMutation = {
@@ -308,6 +316,7 @@ function createSetupStore<
         events: debuggerEvents as DebuggerEvent[],
       }
     } else {
+      //# patch 的是一个对象, 深度遍历 state , 将 state 和传入参数合并
       mergeReactiveObjects(pinia.state.value[$id], partialStateOrMutator)
       subscriptionMutation = {
         type: MutationType.patchObject,
@@ -324,6 +333,7 @@ function createSetupStore<
     })
     isSyncListening = true
     // because we paused the watcher, we need to manually call the subscriptions
+    //# patch 执行后触发相应回调
     triggerSubscriptions(
       subscriptions,
       subscriptionMutation,
@@ -331,9 +341,11 @@ function createSetupStore<
     )
   }
 
+  //# 只有选项式 store 才有 $reset 方法, setup 函数式需要自己实现 $reset
   const $reset = isOptionsStore
     ? function $reset(this: _StoreWithState<Id, S, G, A>) {
         const { state } = options as DefineStoreOptions<Id, S, G, A>
+        //# 重新生成一份 state, 然后直接替换 $state
         const newState = state ? state() : {}
         // we use a patch to group all changes into one single subscription
         this.$patch(($state) => {
@@ -349,6 +361,7 @@ function createSetupStore<
       }
     : noop
 
+  //# 销毁 store
   function $dispose() {
     scope.stop()
     subscriptions = []
@@ -365,19 +378,24 @@ function createSetupStore<
    */
   function wrapAction(name: string, action: _Method) {
     return function (this: any) {
+      //# 将当前的 pinia 赋值给全局的 activePinia, 便于在非组件或者非 hooks 内部使用时获取到这个 pinia
       setActivePinia(pinia)
       const args = Array.from(arguments)
 
+      //# $onAction的处理
       const afterCallbackList: Array<(resolvedReturn: any) => any> = []
       const onErrorCallbackList: Array<(error: unknown) => unknown> = []
       function after(callback: _ArrayType<typeof afterCallbackList>) {
+        //# 在 $onAction 里执行 after 函数时记录传入的回调函数
         afterCallbackList.push(callback)
       }
       function onError(callback: _ArrayType<typeof onErrorCallbackList>) {
+        //# 在 $onAction 里执行 onError 函数时记录传入的回调函数
         onErrorCallbackList.push(callback)
       }
 
       // @ts-expect-error
+      //# action 执行时触发相应回调
       triggerSubscriptions(actionSubscriptions, {
         args,
         name,
@@ -388,9 +406,11 @@ function createSetupStore<
 
       let ret: unknown
       try {
+        //# 执行 action
         ret = action.apply(this && this.$id === $id ? this : store, args)
         // handle sync errors
       } catch (error) {
+        //# 如果执行错误的话触发 onError 回调
         triggerSubscriptions(onErrorCallbackList, error)
         throw error
       }
@@ -399,16 +419,19 @@ function createSetupStore<
       if (ret instanceof Promise) {
         return ret
           .then((value) => {
+            //# 触发 after 回调
             triggerSubscriptions(afterCallbackList, value)
             return value
           })
           .catch((error) => {
+            //# 触发 onError 回调
             triggerSubscriptions(onErrorCallbackList, error)
             return Promise.reject(error)
           })
       }
 
       // trigger after callbacks
+      //# 触发 after 回调
       triggerSubscriptions(afterCallbackList, ret)
 
       //# 返回结果
@@ -497,6 +520,7 @@ function createSetupStore<
   for (const key in setupStore) {
     const prop = setupStore[key]
 
+    //# state 的处理
     if ((isRef(prop) && !isComputed(prop)) || isReactive(prop)) {
       // mark it as a piece of state to be serialized
       if (__DEV__ && hot) {
@@ -529,6 +553,7 @@ function createSetupStore<
       }
       // action
     } else if (typeof prop === 'function') {
+      //# actions 的处理
       // @ts-expect-error: we are overriding the function we avoid wrapping if
       const actionValue = __DEV__ && hot ? prop : wrapAction(key, prop)
       // this a hot module replacement store because the hotUpdate method needs
@@ -552,6 +577,7 @@ function createSetupStore<
     } else if (__DEV__) {
       // add getters for devtools
       if (isComputed(prop)) {
+        //# getters 的处理
         _hmrPayload.getters[key] = isOptionsStore
           ? // @ts-expect-error
             options.getters[key]
@@ -569,6 +595,7 @@ function createSetupStore<
 
   // add the state, getters, and action properties
   /* istanbul ignore if */
+  //# 合并 store
   if (isVue2) {
     Object.keys(setupStore).forEach((key) => {
       set(store, key, setupStore[key])
@@ -583,6 +610,7 @@ function createSetupStore<
   // use this instead of a computed with setter to be able to create it anywhere
   // without linking the computed lifespan to wherever the store is first
   // created.
+  //# 定义 $state 访问器
   Object.defineProperty(store, '$state', {
     get: () => (__DEV__ && hot ? hotState.value : pinia.state.value[$id]),
     set: (state) => {
@@ -705,6 +733,7 @@ function createSetupStore<
   }
 
   // apply all plugins
+  //# 开始调用插件
   pinia._p.forEach((extender) => {
     /* istanbul ignore else */
     if (__USE_DEVTOOLS__ && IS_CLIENT) {
@@ -721,6 +750,7 @@ function createSetupStore<
       )
       assign(store, extensions)
     } else {
+      //# 如果插件执行后有返回值, 则将返回值合并到 store
       assign(
         store,
         scope.run(() =>

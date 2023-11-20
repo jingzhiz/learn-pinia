@@ -96,6 +96,7 @@ export function setMapStoreSuffix(
  *
  * @param stores - list of stores to map to an object
  */
+//# 接收一个 useStore 列表, 将 store 映射为一个对象, 并返回
 export function mapStores<Stores extends any[]>(
   ...stores: [...Stores]
 ): _Spread<Stores> {
@@ -111,6 +112,7 @@ export function mapStores<Stores extends any[]>(
     stores = stores[0]
   }
 
+  //# 将参数中配置的 store 列表转化为一个包含这些 store 的对象并返回
   return stores.reduce((reduced, useStore) => {
     // @ts-expect-error: $id is added by defineStore
     reduced[useStore.$id + mapStoreSuffix] = function (
@@ -250,6 +252,7 @@ export function mapState<
  * @param useStore - store to map from
  * @param keysOrMapper - array or object
  */
+//# 接收一个 useStore 函数, 根据第二个参数返回 store 中的一些数据
 export function mapState<
   Id extends string,
   S extends StateTree,
@@ -259,6 +262,7 @@ export function mapState<
   useStore: StoreDefinition<Id, S, G, A>,
   keysOrMapper: any
 ): _MapStateReturn<S, G> | _MapStateObjectReturn<Id, S, G, A> {
+  //# 如果是数组, 则遍历数组中每个 key, 生成一个对象并返回
   return Array.isArray(keysOrMapper)
     ? keysOrMapper.reduce((reduced, key) => {
         reduced[key] = function (this: ComponentPublicInstance) {
@@ -267,12 +271,14 @@ export function mapState<
         return reduced
       }, {} as _MapStateReturn<S, G>)
     : Object.keys(keysOrMapper).reduce((reduced, key: string) => {
+      //# 如果是对象, 则取出这个对象的 key, 遍历这个 keys 生成一个对象并返回
         // @ts-expect-error
         reduced[key] = function (this: ComponentPublicInstance) {
           const store = useStore(this.$pinia)
           const storeKey = keysOrMapper[key]
           // for some reason TS is unable to infer the type of storeKey to be a
           // function
+          //# 如果是一个函数, 那么 value 就是函数执行后的结果, 对应 getters
           return typeof storeKey === 'function'
             ? (storeKey as (store: Store<Id, S, G, A>) => any).call(this, store)
             : store[storeKey]
@@ -285,6 +291,7 @@ export function mapState<
  * Alias for `mapState()`. You should use `mapState()` instead.
  * @deprecated use `mapState()` instead.
  */
+//# mapState 中已经处理了 getters 情况
 export const mapGetters = mapState
 
 /**
@@ -376,6 +383,7 @@ export function mapActions<
  * @param useStore - store to map from
  * @param keysOrMapper - array or object
  */
+//# 接收一个 useStore 函数, 根据第二个参数返回 store 中的一些方法
 export function mapActions<
   Id extends string,
   S extends StateTree,
@@ -386,6 +394,7 @@ export function mapActions<
   useStore: StoreDefinition<Id, S, G, A>,
   keysOrMapper: Array<keyof A> | KeyMapper
 ): _MapActionsReturn<A> | _MapActionsObjectReturn<A, KeyMapper> {
+  //# 如果是数组, 则遍历数组中每个 key, 生成一个对象并返回
   return Array.isArray(keysOrMapper)
     ? keysOrMapper.reduce((reduced, key) => {
         // @ts-expect-error
@@ -398,6 +407,7 @@ export function mapActions<
         return reduced
       }, {} as _MapActionsReturn<A>)
     : Object.keys(keysOrMapper).reduce((reduced, key: keyof KeyMapper) => {
+      //# 如果是对象, 则取出这个对象的 key, 遍历这个 keys 生成取出 store 中的 action, 并包装一层函数然后返回
         // @ts-expect-error
         reduced[key] = function (
           this: ComponentPublicInstance,
@@ -481,6 +491,8 @@ export function mapWritableState<
  * @param useStore - store to map from
  * @param keysOrMapper - array or object
  */
+//# 对 state 中的状态进行可修改处理, 添加 set
+//# 除了创建的计算属性的 setter，其他与 mapState() 相同， 所以 state 可以被修改
 export function mapWritableState<
   Id extends string,
   S extends StateTree,

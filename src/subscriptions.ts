@@ -3,6 +3,8 @@ import { _Method } from './types'
 
 export const noop = () => {}
 
+//# 发布订阅的函数, 用来处理 $onAction 的 after/onError 的回调
+
 export function addSubscription<T extends _Method>(
   subscriptions: T[],
   callback: T,

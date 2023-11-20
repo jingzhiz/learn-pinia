@@ -36,6 +36,7 @@ export type StoreToRefs<SS extends StoreGeneric> = ToRefs<
  *
  * @param store - store to extract the refs from
  */
+//# 用于结构 store 的方法
 export function storeToRefs<SS extends StoreGeneric>(
   store: SS
 ): StoreToRefs<SS> {
@@ -45,11 +46,14 @@ export function storeToRefs<SS extends StoreGeneric>(
     // @ts-expect-error: toRefs include methods and others
     return toRefs(store)
   } else {
+    //# 先转成原生对象, 避免循环中不断触发 getter
     store = toRaw(store)
 
+    //# 定义一个用于接收结果的对象
     const refs = {} as StoreToRefs<SS>
     for (const key in store) {
       const value = store[key]
+      //# 将每一个 prop 转成 ref, 但是过滤掉 function(action)
       if (isRef(value) || isReactive(value)) {
         // @ts-expect-error: the key is state or getter
         refs[key] =
@@ -58,6 +62,7 @@ export function storeToRefs<SS extends StoreGeneric>(
       }
     }
 
+    // 返回结果
     return refs
   }
 }
